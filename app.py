@@ -84,17 +84,7 @@ controls = dbc.Card(
                  value="all",
              ),
              ]),
-        dbc.FormGroup(
-            [dbc.Label("Select year(s)"),
-             dcc.Dropdown(
-                 id="options",
-                 options=[
-                     {"label": x, "value": x} for x in years
-                 ],
-                 multi = True
-             )
-             ]
-        ),
+        dbc.FormGroup(html.Div(id="year-options")),
     ],
     body=True,
 )
@@ -114,6 +104,27 @@ app.layout = dbc.Container(
      html.Div(id="tab-content")
      ]
 )
+
+
+@app.callback(
+    Output("year-options", "children"),
+    Input("options", "value"),
+)
+def render_year_content(value):
+    if value == 'all':
+        return [dbc.Label("Select year range"), html.Br(),
+                dcc.Input(id="year1", type="text", placeholder=""),
+                dcc.Input(id="year2", type="text", placeholder=""), ]
+    else:
+        return [
+            dbc.Label("Select year(s)"),
+            dcc.Dropdown(
+                id="options",
+                options=[
+                    {"label": x, "value": x} for x in years
+                ],
+                multi=True
+            )]
 
 
 @app.callback(
