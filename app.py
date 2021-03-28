@@ -8,6 +8,7 @@ import dash_html_components as html
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
+import plotly.graph_objects as go
 
 app = dash.Dash(__name__)
 
@@ -46,6 +47,7 @@ app.index_string = '''
 '''
 
 years = list(range(2000, 2021, 1))
+months_index = AAPL.index.strftime('%Y-%m').unique()
 
 
 def give_returns(series):
@@ -56,7 +58,7 @@ def give_returns(series):
 
 
 dropdowns = dcc.Dropdown(
-    id='selector',
+    id='selectors',
     options=[
         {'label': 'Apple Inc.', 'value': 'AAPL'},
         {'label': 'Microsoft Corp.', 'value': 'MSFT'},
@@ -67,16 +69,27 @@ dropdowns = dcc.Dropdown(
     value=['AAPL'],
     multi=True)
 
+dropdown = dcc.Dropdown(
+    id='selector',
+    options=[
+        {'label': 'Apple Inc.', 'value': 'AAPL'},
+        {'label': 'Microsoft Corp.', 'value': 'MSFT'},
+        {'label': 'Facebook Inc.', 'value': 'FB'},
+        {'label': 'Amazon.com Inc.', 'value': 'AMZN'},
+        {'label': 'Tesla Inc.', 'value': 'TSLA'}
+    ],
+    value=['AAPL'], )
+
 controls = dbc.Card(
     [dbc.FormGroup(
         [dbc.Label("Company"),
-         dropdowns,
+         dropdown,
          ]
     ),
         dbc.FormGroup(
             [dbc.Label("View"),
              dcc.Dropdown(
-                 id="options",
+                 id="year-choice",
                  options=[
                      {"label": "Returns history", "value": 'all'},
                      {"label": 'Compare yearly trends', 'value': 'monthly'}
@@ -84,10 +97,45 @@ controls = dbc.Card(
                  value="all",
              ),
              ]),
-        dbc.FormGroup(html.Div(id="year-options")),
+        html.Div(id="year-options", style={'display': 'inline'})
     ],
     body=True,
 )
+
+
+@app.callback(
+    Output('output-returns', 'figure'),
+    Input('year-choice', 'value'),
+    Input('year1', 'value'),
+    Input('year2', 'value'),
+    Input('selector', 'value'))
+def update_output(choice, year1, year2, comp):
+    if choice == 'all':
+        range1 = 0
+        range2 = 0
+        if int(year1) > int(year2):
+            range1 = year2
+            range2 = year1
+        else:
+            range1 = year1
+            range2 = year2
+
+        y1 = str(range1)+'-01'
+        y2 = str(range2) + '-12'
+        if range2 == '2021':
+            y2 = str(range2) + '-03'
+
+        returns = give_returns(comp)  # insert index slice for time range here
+
+        pos = returns[returns >= 0]
+        neg = returns[returns < 0]
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=months_index[returns < 0], y=neg, marker_color='crimson'))
+        fig.add_trace(go.Bar(x=months_index[returns >= 0], y=pos, marker_color='lightslategrey'))
+        fig.update_layout(xaxis_range=[y1, y2])
+        return fig
+
 
 app.layout = dbc.Container(
     [html.H1('Hello Dash'),
@@ -108,14 +156,14 @@ app.layout = dbc.Container(
 
 @app.callback(
     Output("year-options", "children"),
-    Input("options", "value"),
+    Input("year-choice", "value"),
 )
 def render_year_content(value):
     if value == 'all':
         return [dbc.Label("Select year range"), html.Br(),
                 dcc.Input(id="year1", type="text", placeholder=""),
                 dcc.Input(id="year2", type="text", placeholder=""), ]
-    else:
+    elif value == 'monthly':
         return [
             dbc.Label("Select year(s)"),
             dcc.Dropdown(
@@ -177,7 +225,7 @@ def render_tab_content(active_tab):
         return dbc.Row(
             [
                 dbc.Col(controls, width=4),
-                dbc.Col(dcc.Graph(id='output-graph-range-slider', style={'padding': '0.5rem'}), width=8),
+                dbc.Col(dcc.Graph(id='output-returns', style={'padding': '0.5rem'}), width=8),
             ]
         )
     return "No tab selected"
@@ -185,7 +233,7 @@ def render_tab_content(active_tab):
 
 @app.callback(
     Output('output-graph-range-slider', 'figure'),
-    [Input('selector', 'value')],
+    [Input('selectors', 'value')],
     [Input('my-range-slider', 'value')])
 def update_output(selects, range_slider):
     dat1 = str(range_slider[0])
