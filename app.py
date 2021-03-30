@@ -63,6 +63,11 @@ def give_monthly_returns(series):
     returns = dat / lag - 1
     return returns.reset_index()
 
+def give_weekly_returns(series):
+    dat = series.resample('W').mean()
+    lag=dat.shift(1)
+    returns = dat/lag - 1
+    return returns
 
 for x in symb:
     globals()[x + '_returns'] = give_returns(globals()[x])
@@ -91,6 +96,17 @@ dropdown = dcc.Dropdown(
     ],
     value='AAPL', )
 
+dropdown1 = dcc.Dropdown(
+    id='selector1',
+    options=[
+        {'label': 'Apple Inc.', 'value': 'AAPL'},
+        {'label': 'Microsoft Corp.', 'value': 'MSFT'},
+        {'label': 'Facebook Inc.', 'value': 'FB'},
+        {'label': 'Amazon.com Inc.', 'value': 'AMZN'},
+        {'label': 'Tesla Inc.', 'value': 'TSLA'}
+    ],
+    value='AAPL', )
+
 controls = dbc.Card(
     [dbc.FormGroup(
         [dbc.Label("Company"),
@@ -98,14 +114,14 @@ controls = dbc.Card(
          ]
     ),
         dbc.FormGroup(
-            [dbc.Label("Adjust monthly returns window"),
-             dcc.Input(id="year1", type="text", value='2000'),
-             dcc.Input(id="year2", type="text", value='2021'),
+            [dbc.Label("Select year(s) to compare returns"),
+             dcc.Dropdown(id="yr-options", value=['2000', '2001'], multi=True),
              ]
         ),
         dbc.FormGroup(
-            [dbc.Label("Select year(s) to compare returns"),
-             dcc.Dropdown(id="yr-options", value=['2000', '2001'], multi=True),
+            [dbc.Label("Select company and year to compare returns with"),
+             dropdown1,
+             dbc.Input(id='year',value='2020', type='text', placeholder='2020')
              ]
         )
     ],
@@ -114,35 +130,24 @@ controls = dbc.Card(
 
 
 @app.callback(
-    Output('year1', 'value'),
-    Output('year1', 'placeholder'),
-    Input('selector', 'value'))
-def update_year_placeholder(comp):
-    if comp == 'TSLA':
-        return '2010', '2010'
-    elif comp == 'FB':
-        return '2012', '2012'
-    else:
-        return '2000', '2000'
-
+    Output('graph3', 'figure'),
+    Input('selector','value'),
+    Input('selector1', 'value'),
+    Input('year','value'))
+def update_graph3(comp1, comp2, year):
+    pdf = pd.DataFrame()
+    pdf.columns.name = 'company'
+    pdf[comp1] = give_weekly_returns(globals()[comp1][year])
+    pdf[comp2] = give_weekly_returns(globals()[comp2][year])
+    fig = px.area(pdf, facet_col="company", facet_col_wrap=1)
+    title = "Weekly Returns of "+ comp1 + " and " + comp2 +' in '+year
+    fig.update_layout(xaxis_rangeslider_visible=True, title_text=title)
+    return fig
 
 @app.callback(
     Output('graph1', 'figure'),
-    Input('year1', 'value'),
-    Input('year2', 'value'),
     Input('selector', 'value'))
-def update_graph1(year_1, year_2, comp):
-    range1 = year_1
-    range2 = year_2
-    if int(year_1) > int(year_2):
-        range1 = year_2
-        range2 = year_1
-
-    y1 = str(range1) + '-01'
-    y2 = str(range2) + '-12'
-    if range2 == '2021':
-        y2 = str(range2) + '-03'
-
+def update_graph1(comp):
     returns = globals()[comp + '_returns']  # insert index slice for time range here
 
     months_index = globals()[comp].index.strftime('%Y-%m').unique()
@@ -152,9 +157,9 @@ def update_graph1(year_1, year_2, comp):
     fig = go.Figure()
     fig.add_trace(go.Bar(x=months_index[returns < 0], y=neg, marker_color='crimson', name=''))
     fig.add_trace(go.Bar(x=months_index[returns >= 0], y=pos, marker_color='lightslategrey', name=''))
-    fig.update_layout(showlegend=False, template='plotly_white')
-    fig.update_xaxes(range=[y1, y2], title_text='Date')
+    fig.update_layout(showlegend=False, template='plotly_white', title=comp + ' Monthly Returns History')
     fig.update_yaxes(range=[-40, 40], title_text='Returns %')
+    fig.update_xaxes(rangeslider_visible=True)
     fig.update_traces(hovertemplate='Returns: %{y:.2f}%')
     fig.update_layout(hovermode="x unified")
     return fig
@@ -166,19 +171,21 @@ def update_graph1(year_1, year_2, comp):
     Input('selector', 'value')
 )
 def update_graph2(yrs, comp):
-    a = globals()[comp + '_monthly_returns']
+    ans = give_monthly_returns(globals()[comp])
     fig = go.Figure()
     for yr in yrs:
-        print(yr)
-        y = a[a['Date'].str.slice(0, 4) == yr]
-        print(y)
+        y = ans[ans['Date'].str.slice(0, 4) == yr]
         if yr == '2021':
-            fig.add_trace(go.Scatter(x=months[0:3], y=y['Adj Close'],
+            fig.add_trace(go.Scatter(x=months[0:3], y=100*y['Adj Close'],
                                      mode='lines+markers', name=yr))
         else:
-            fig.add_trace(go.Scatter(x=months, y=y['Adj Close'],
+            fig.add_trace(go.Scatter(x=months, y=100*y['Adj Close'],
                                      mode='lines+markers', name=yr))
-    fig.update_layout(showlegend=True)
+    fig.update_layout(showlegend=True, template='plotly_white', title='Comparing ' + comp + ' annual monthly returns')
+    fig.update_xaxes(title_text='Months')
+    fig.update_yaxes(title_text='Returns %')
+    fig.update_traces(hovertemplate='Returns: %{y:.2f}%')
+    fig.update_layout(hovermode="x unified")
     return fig
 
 
@@ -205,7 +212,7 @@ app.layout = dbc.Container(
 )
 def render_years(comp):
     ind = globals()[comp].index.strftime('%Y-%m')[0][2:4]
-    return [{"label": x, "value": x} for x in years[int(ind):]]
+    return [{"label": x, "value": str(x)} for x in years[int(ind):]]
 
 
 @app.callback(
@@ -221,69 +228,46 @@ def render_tab_content(active_tab):
     if active_tab == "price":
         return dbc.Row([
             dbc.Col(children=[
-                html.Div(children=[dropdowns],
+                html.Div(children=[dbc.Label("Select company(s) to view prices history", style={'font-size':'1rem'}),
+                                   dropdowns],
                          style={'align': 'right', 'text-align': 'right', 'padding': '20px 100px 10px'}),
-                dcc.Graph(id='output-graph-range-slider', style={'padding': '0.5rem'}),
-                html.P('Adjust slider to specify time range', style={'font-size': '1.5rem', 'padding-left': '0.5rem'}),
-                dcc.RangeSlider(
-                    id='my-range-slider',
-                    min=2000, max=2021, step=1,
-                    marks={
-                        2000: {'label': '2000', 'style': {'color': '#77b0b1', 'display': 'inline'}},
-                        2001: {'label': '2001'},
-                        2002: {'label': '2002'},
-                        2003: {'label': '2003'},
-                        2004: {'label': '2004'},
-                        2005: {'label': '2005'},
-                        2006: {'label': '2006'},
-                        2007: {'label': '2007'},
-                        2008: {'label': '2008'},
-                        2009: {'label': '2009'},
-                        2010: {'label': '2010', 'style': {'display': 'inline'}},
-                        2011: {'label': '2011'},
-                        2012: {'label': '2012'},
-                        2013: {'label': '2013'},
-                        2014: {'label': '2014'},
-                        2015: {'label': '2015'},
-                        2016: {'label': '2016'},
-                        2017: {'label': '2017'},
-                        2018: {'label': '2018'},
-                        2019: {'label': '2019'},
-                        2020: {'label': '2020'},
-                        2021: {'label': '2021', 'style': {'display': 'inline'}}
-                    }, value=[2000, 2021], allowCross=False)
+                dcc.Graph(id='output-graph-range-slider', style={'padding': '0.5rem'})
             ])],
             align='center')
     elif active_tab == "returns":
-        return dbc.Row(
+        return [dbc.Row(
             [
                 dbc.Col(controls, width=4),
-                dbc.Col(children=[dcc.Graph(id='graph1'), dcc.Graph(id='graph2')], width=8),
-            ]
-        )
+                dbc.Col(children=[dcc.Graph(id='graph1')], width=8),
+            ],
+                align='center'),
+            dbc.Row(
+                [
+                    dbc.Col(children=[dcc.Graph(id='graph2')], width=6),
+                    dbc.Col(children=[dcc.Graph(id='graph3')], width=6)
+                ],
+                align='center')
+        ]
     return "No tab selected"
 
 
 @app.callback(
     Output('output-graph-range-slider', 'figure'),
-    [Input('selectors', 'value')],
-    [Input('my-range-slider', 'value')])
-def update_output(selects, range_slider):
-    dat1 = str(range_slider[0])
-    dat2 = str(range_slider[1])
-    dat = data[dat1:dat2]
-
+    [Input('selectors', 'value')],)
+def update_output(selects):
     fig = go.Figure()
 
     for x in selects:
-        fig.add_trace(go.Scatter(x=dat.index, y=dat[x],
+        fig.add_trace(go.Scatter(x=data.index, y=data[x],
                                  mode='lines', name=x))
 
     fig.update_xaxes(title_text='Date')
     fig.update_yaxes(title_text='Value $')
-    fig.update_layout(legend_x=0, legend_y=1, template='plotly_white')
+    fig.update_layout(legend_x=0, legend_y=1, template='plotly_white', title='Stock Prices History')
     fig.update_traces(hovertemplate='Price: $%{y:.2f} <br>Date: %{x}')
     fig.update_layout(hovermode="x unified")
+
+    fig.update_xaxes(rangeslider_visible=True)
     return fig
 
 
