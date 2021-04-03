@@ -4,6 +4,7 @@ import numpy as np
 import pandas_datareader.data as web
 import plotly.express as px
 import dash
+import time
 import dash_html_components as html
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
@@ -63,11 +64,13 @@ def give_monthly_returns(series):
     returns = dat / lag - 1
     return returns.reset_index()
 
+
 def give_weekly_returns(series):
     dat = series.resample('W').mean()
-    lag=dat.shift(1)
-    returns = dat/lag - 1
+    lag = dat.shift(1)
+    returns = dat / lag - 1
     return returns
+
 
 for x in symb:
     globals()[x + '_returns'] = give_returns(globals()[x])
@@ -121,28 +124,30 @@ controls = dbc.Card(
         dbc.FormGroup(
             [dbc.Label("Select company and year to compare returns with"),
              dropdown1,
-             dbc.Input(id='year',value='2020', type='text', placeholder='2020')
+             dcc.Dropdown(id="year", value='2020',
+                          options=[{"label": x, "value": str(x)} for x in years]),
              ]
         )
     ],
-    body=True,
-)
+    body=True)
 
 
 @app.callback(
     Output('graph3', 'figure'),
-    Input('selector','value'),
+    Input('selector', 'value'),
     Input('selector1', 'value'),
-    Input('year','value'))
+    Input('year', 'value'))
 def update_graph3(comp1, comp2, year):
+    time.sleep(2)
     pdf = pd.DataFrame()
     pdf.columns.name = 'company'
     pdf[comp1] = give_weekly_returns(globals()[comp1][year])
     pdf[comp2] = give_weekly_returns(globals()[comp2][year])
     fig = px.area(pdf, facet_col="company", facet_col_wrap=1)
-    title = "Weekly Returns of "+ comp1 + " and " + comp2 +' in '+year
+    title = "Weekly Returns of " + comp1 + " and " + comp2 + ' in ' + year
     fig.update_layout(xaxis_rangeslider_visible=True, title_text=title)
     return fig
+
 
 @app.callback(
     Output('graph1', 'figure'),
@@ -176,10 +181,10 @@ def update_graph2(yrs, comp):
     for yr in yrs:
         y = ans[ans['Date'].str.slice(0, 4) == yr]
         if yr == '2021':
-            fig.add_trace(go.Scatter(x=months[0:3], y=100*y['Adj Close'],
+            fig.add_trace(go.Scatter(x=months[0:3], y=100 * y['Adj Close'],
                                      mode='lines+markers', name=yr))
         else:
-            fig.add_trace(go.Scatter(x=months, y=100*y['Adj Close'],
+            fig.add_trace(go.Scatter(x=months, y=100 * y['Adj Close'],
                                      mode='lines+markers', name=yr))
     fig.update_layout(showlegend=True, template='plotly_white', title='Comparing ' + comp + ' annual monthly returns')
     fig.update_xaxes(title_text='Months')
@@ -228,10 +233,10 @@ def render_tab_content(active_tab):
     if active_tab == "price":
         return dbc.Row([
             dbc.Col(children=[
-                html.Div(children=[dbc.Label("Select company(s) to view prices history", style={'font-size':'1rem'}),
+                html.Div(children=[dbc.Label("Select company(s) to view prices history", style={'font-size': '1rem'}),
                                    dropdowns],
                          style={'align': 'right', 'text-align': 'right', 'padding': '20px 100px 10px'}),
-                dcc.Graph(id='output-graph-range-slider', style={'padding': '0.5rem'})
+                dcc.Graph(id='output-graph-range-slider')
             ])],
             align='center')
     elif active_tab == "returns":
@@ -240,7 +245,7 @@ def render_tab_content(active_tab):
                 dbc.Col(controls, width=4),
                 dbc.Col(children=[dcc.Graph(id='graph1')], width=8),
             ],
-                align='center'),
+            align='center'),
             dbc.Row(
                 [
                     dbc.Col(children=[dcc.Graph(id='graph2')], width=6),
@@ -253,7 +258,7 @@ def render_tab_content(active_tab):
 
 @app.callback(
     Output('output-graph-range-slider', 'figure'),
-    [Input('selectors', 'value')],)
+    [Input('selectors', 'value')], )
 def update_output(selects):
     fig = go.Figure()
 
