@@ -6,6 +6,8 @@ import plotly.express as px
 import dash
 import time
 import dash_html_components as html
+
+from datetime import date
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
@@ -14,14 +16,15 @@ import plotly.graph_objects as go
 app = dash.Dash(__name__)
 
 start = datetime.datetime(2000, 1, 1)
-end = datetime.datetime(2021, 3, 1)
+today = date.today().strftime('%Y-%m-%d')
 
 symb = ['AAPL', 'MSFT', 'TSLA', 'AMZN', 'FB']
-for x in symb:
-    globals()[x] = web.DataReader(x, 'yahoo', start, end)['Adj Close']
-
+AAPL = web.DataReader('AAPL', 'yahoo', start, today)['Adj Close']
 data = pd.DataFrame(index=AAPL.index)
-for x in symb:
+data['AAPL']=AAPL
+
+for x in symb[1:]:
+    globals()[x] = web.DataReader(x, 'yahoo', start, today)['Adj Close']
     data[x] = globals()[x]
 
 app.config.suppress_callback_exceptions = True
@@ -51,18 +54,18 @@ years = list(range(2000, 2021, 1))
 months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 
-def give_returns(series):
-    dat = series.groupby(series.index.strftime('%Y-%m')).mean()
-    lag = dat.shift(1)
-    returns = dat / lag - 1
-    return returns
+# def give_returns(series):
+#     dat = series.groupby(series.index.strftime('%Y-%m')).mean()
+#     lag = dat.shift(1)
+#     returns = dat / lag - 1
+#     return returns
 
 
 def give_monthly_returns(series):
     dat = series.groupby(series.index.strftime('%Y-%m')).mean()
     lag = dat.shift(1)
     returns = dat / lag - 1
-    return returns.reset_index()
+    return returns
 
 
 def give_weekly_returns(series):
@@ -73,8 +76,8 @@ def give_weekly_returns(series):
 
 
 for x in symb:
-    globals()[x + '_returns'] = give_returns(globals()[x])
-    globals()[x + '_monthly_returns'] = globals()[x + '_returns'].reset_index()
+    globals()[x + '_weekly_returns'] = give_weekly_returns(globals()[x])
+    globals()[x + '_monthly_returns'] = give_monthly_returns(globals()[x])
 
 dropdowns = dcc.Dropdown(
     id='selectors',
@@ -117,8 +120,8 @@ controls = dbc.Card(
          ]
     ),
         dbc.FormGroup(
-            [dbc.Label("Select year(s) to compare returns"),
-             dcc.Dropdown(id="yr-options", value=['2000', '2001'], multi=True),
+            [dbc.Label("Select year(s) to compare monthly returns between years"),
+             dcc.Dropdown(id="yr-options", value=['2019', '2020'], multi=True),
              ]
         ),
         dbc.FormGroup(
@@ -138,14 +141,16 @@ controls = dbc.Card(
     Input('selector1', 'value'),
     Input('year', 'value'))
 def update_graph3(comp1, comp2, year):
-    time.sleep(2)
     pdf = pd.DataFrame()
     pdf.columns.name = 'company'
-    pdf[comp1] = give_weekly_returns(globals()[comp1][year])
-    pdf[comp2] = give_weekly_returns(globals()[comp2][year])
+    pdf[comp1] = globals()[comp1+'_weekly_returns'][year]
+    pdf[comp2] = globals()[comp2+'_weekly_returns'][year]
     fig = px.area(pdf, facet_col="company", facet_col_wrap=1)
     title = "Weekly Returns of " + comp1 + " and " + comp2 + ' in ' + year
     fig.update_layout(xaxis_rangeslider_visible=True, title_text=title)
+    fig.update_layout(template='plotly_white')
+    fig.update_traces(hovertemplate='Returns: %{y:.2f}%')
+    fig.update_layout(hovermode="x unified")
     return fig
 
 
@@ -153,9 +158,9 @@ def update_graph3(comp1, comp2, year):
     Output('graph1', 'figure'),
     Input('selector', 'value'))
 def update_graph1(comp):
-    returns = globals()[comp + '_returns']  # insert index slice for time range here
-
-    months_index = globals()[comp].index.strftime('%Y-%m').unique()
+    returns = globals()[comp + '_monthly_returns']  # insert index slice for time range here
+    print(returns.head())
+    months_index = returns.index
     pos = 100 * returns[returns >= 0]
     neg = 100 * returns[returns < 0]
 
@@ -176,7 +181,7 @@ def update_graph1(comp):
     Input('selector', 'value')
 )
 def update_graph2(yrs, comp):
-    ans = give_monthly_returns(globals()[comp])
+    ans = globals()[comp+'_monthly_returns'].reset_index()
     fig = go.Figure()
     for yr in yrs:
         y = ans[ans['Date'].str.slice(0, 4) == yr]
@@ -206,7 +211,8 @@ app.layout = dbc.Container(
          id="tabs",
          active_tab="price",
      ),
-     html.Div(id="tab-content")
+     html.Div(id="tab-content"),
+     html.Div(id="page-content")
      ]
 )
 
