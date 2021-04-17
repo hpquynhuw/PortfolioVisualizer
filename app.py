@@ -16,12 +16,12 @@ import plotly.graph_objects as go
 app = dash.Dash(__name__)
 
 start = datetime.datetime(2000, 1, 1)
-today = date.today().strftime('%Y-%m-%d')
+today = date.today()
 
 symb = ['AAPL', 'MSFT', 'TSLA', 'AMZN', 'FB']
 AAPL = web.DataReader('AAPL', 'yahoo', start, today)['Adj Close']
 data = pd.DataFrame(index=AAPL.index)
-data['AAPL']=AAPL
+data['AAPL'] = AAPL
 
 for x in symb[1:]:
     globals()[x] = web.DataReader(x, 'yahoo', start, today)['Adj Close']
@@ -50,7 +50,7 @@ app.index_string = '''
 </html>
 '''
 
-years = list(range(2000, 2021, 1))
+years = list(range(2000, 2022, 1))
 months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 
@@ -111,28 +111,31 @@ dropdown1 = dcc.Dropdown(
         {'label': 'Amazon.com Inc.', 'value': 'AMZN'},
         {'label': 'Tesla Inc.', 'value': 'TSLA'}
     ],
-    value='AAPL', )
+    value='AAPL')
 
-controls = dbc.Card(
-    [dbc.FormGroup(
-        [dbc.Label("Company"),
-         dropdown,
-         ]
-    ),
-        dbc.FormGroup(
-            [dbc.Label("Select year(s) to compare monthly returns between years"),
-             dcc.Dropdown(id="yr-options", value=['2019', '2020'], multi=True),
-             ]
-        ),
-        dbc.FormGroup(
-            [dbc.Label("Select company and year to compare returns with"),
-             dropdown1,
-             dcc.Dropdown(id="year", value='2020',
-                          options=[{"label": x, "value": str(x)} for x in years]),
-             ]
-        )
-    ],
-    body=True)
+
+# dbc.FormGroup(
+#     [dbc.Label("Select company and year to compare returns with"),
+#      dropdown1,
+#      dcc.Dropdown(id="year", value='2020',
+#                   options=[{"label": x, "value": str(x)} for x in years]),
+#      ]
+# )
+
+# html.Div([
+#             dcc.Dropdown(
+#                 id='crossfilter-xaxis-column',
+#                 options=[{'label': i, 'value': i} for i in available_indicators],
+#                 value='Fertility rate, total (births per woman)'
+#             ),
+#             dcc.RadioItems(
+#                 id='crossfilter-xaxis-type',
+#                 options=[{'label': i, 'value': i} for i in ['Linear', 'Log']],
+#                 value='Linear',
+#                 labelStyle={'display': 'inline-block'}
+#             )
+#         ],
+#         style={'width': '49%', 'display': 'inline-block'}),
 
 
 @app.callback(
@@ -143,14 +146,16 @@ controls = dbc.Card(
 def update_graph3(comp1, comp2, year):
     pdf = pd.DataFrame()
     pdf.columns.name = 'company'
-    pdf[comp1] = globals()[comp1+'_weekly_returns'][year]
-    pdf[comp2] = globals()[comp2+'_weekly_returns'][year]
+    pdf[comp1] = globals()[comp1 + '_weekly_returns'][year]
+    pdf[comp2] = globals()[comp2 + '_weekly_returns'][year]
     fig = px.area(pdf, facet_col="company", facet_col_wrap=1)
     title = "Weekly Returns of " + comp1 + " and " + comp2 + ' in ' + year
     fig.update_layout(xaxis_rangeslider_visible=True, title_text=title)
     fig.update_layout(template='plotly_white')
     fig.update_traces(hovertemplate='Returns: %{y:.2f}%')
     fig.update_layout(hovermode="x unified")
+    fig.update_layout(legend_x=0, legend_y=1)
+    fig.update_layout(height=220, margin={'l': 30, 'b': 30, 'r': 0, 't': 50})
     return fig
 
 
@@ -172,6 +177,7 @@ def update_graph1(comp):
     fig.update_xaxes(rangeslider_visible=True)
     fig.update_traces(hovertemplate='Returns: %{y:.2f}%')
     fig.update_layout(hovermode="x unified")
+    fig.update_layout(margin={'l': 10, 'b': 40, 't': 60, 'r': 10})
     return fig
 
 
@@ -181,12 +187,12 @@ def update_graph1(comp):
     Input('selector', 'value')
 )
 def update_graph2(yrs, comp):
-    ans = globals()[comp+'_monthly_returns'].reset_index()
+    ans = globals()[comp + '_monthly_returns'].reset_index()
     fig = go.Figure()
     for yr in yrs:
         y = ans[ans['Date'].str.slice(0, 4) == yr]
         if yr == '2021':
-            fig.add_trace(go.Scatter(x=months[0:3], y=100 * y['Adj Close'],
+            fig.add_trace(go.Scatter(x=months[0:today.month], y=100 * y['Adj Close'],
                                      mode='lines+markers', name=yr))
         else:
             fig.add_trace(go.Scatter(x=months, y=100 * y['Adj Close'],
@@ -196,6 +202,8 @@ def update_graph2(yrs, comp):
     fig.update_yaxes(title_text='Returns %')
     fig.update_traces(hovertemplate='Returns: %{y:.2f}%')
     fig.update_layout(hovermode="x unified")
+    fig.update_layout(legend_x=0, legend_y=1)
+    fig.update_layout(height=220, margin={'l': 30, 'b': 30, 'r': 0, 't': 50})
     return fig
 
 
@@ -239,26 +247,67 @@ def render_tab_content(active_tab):
     if active_tab == "price":
         return dbc.Row([
             dbc.Col(children=[
-                html.Div(children=[dbc.Label("Select company(s) to view prices history", style={'font-size': '1rem'}),
-                                   dropdowns],
-                         style={'align': 'right', 'text-align': 'right', 'padding': '20px 100px 10px'}),
-                dcc.Graph(id='output-graph-range-slider')
-            ])],
+                html.Div(children=[
+                    dbc.Label("Select company(s) to view prices history", style={'font-size': '1rem'}),
+                    dropdowns
+                ],
+                    style={'align': 'right', 'text-align': 'right', 'padding': '20px 100px 10px'}),
+                dcc.Graph(id='output-graph-range-slider')]
+            )],
             align='center')
     elif active_tab == "returns":
         return [dbc.Row(
             [
-                dbc.Col(controls, width=4),
-                dbc.Col(children=[dcc.Graph(id='graph1')], width=8),
+                dbc.Col(children=[
+                    dbc.Label("Company"),
+                    dropdown,
+                    dcc.RadioItems(
+                        id='return-type',
+                        options=[{'label': i, 'value': i} for i in ['Linear', 'Log']],
+                        value='Linear',
+                        labelStyle={'display': 'inline-block'}
+                    )
+                ], width=6),
+                dbc.Col(children=[
+                    dbc.Label("Select year(s) to compare monthly returns between years"),
+                    dcc.Dropdown(id="yr-options", value=['2019', '2020'], multi=True),
+                    dbc.Label("Select company and year to compare returns with",
+                              style={'display': 'block'}),
+                    html.Div([dropdown1], style={'width': '49%', 'display': 'inline-block'}),
+                    html.Div([
+                        dcc.Dropdown(id="year", value='2020',
+                                     options=[{"label": x, "value": str(x)} for x in years])
+                    ],
+                        style={'width': '49%', 'float': 'right', 'display': 'inline-block'}),
+                ], width=6)
             ],
-            align='center'),
-            dbc.Row(
-                [
-                    dbc.Col(children=[dcc.Graph(id='graph2')], width=6),
-                    dbc.Col(children=[dcc.Graph(id='graph3')], width=6)
-                ],
-                align='center')
+            style={
+                'borderBottom': 'thin lightgrey solid',
+                'backgroundColor': 'rgb(250, 250, 250)',
+                'padding': '5px'
+            }, align='center'
+        ),
+            html.Div([
+                html.Div([dcc.Graph(id='graph1')],
+                         style={'width': '49%', 'display': 'inline-block', 'padding': '20 10'}),
+                html.Div([
+                    dcc.Graph(id='graph2'),
+                    dcc.Graph(id='graph3'),
+                ], style={'display': 'inline-block', 'width': '49%', 'padding': '50 0'})
+            ])
         ]
+        # dbc.Col(children=[dcc.Graph(id='graph1')], width=6,
+        #         style={'width': '49%', 'display': 'inline-block'}),
+        # dbc.Col(children=[dcc.Graph(id='graph2'), dcc.Graph(id='graph3')], width=6,
+        #         style={'width': '49%', 'float' : 'right', 'display': 'inline-block'}),
+        # ]),
+        # dbc.Row(
+        #     [
+        #         dbc.Col(children=[dcc.Graph(id='graph2')], width=6),
+        #         dbc.Col(children=[dcc.Graph(id='graph3')], width=6)
+        #     ],
+        #     align='center')
+
     return "No tab selected"
 
 
