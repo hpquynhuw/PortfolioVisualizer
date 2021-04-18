@@ -10,7 +10,7 @@ import dash_html_components as html
 from datetime import date
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 import plotly.graph_objects as go
 
 app = dash.Dash(__name__)
@@ -54,13 +54,6 @@ years = list(range(2000, 2022, 1))
 months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 
-# def give_returns(series):
-#     dat = series.groupby(series.index.strftime('%Y-%m')).mean()
-#     lag = dat.shift(1)
-#     returns = dat / lag - 1
-#     return returns
-
-
 def give_monthly_returns(series):
     dat = series.groupby(series.index.strftime('%Y-%m')).mean()
     lag = dat.shift(1)
@@ -78,6 +71,7 @@ def give_weekly_returns(series):
 for x in symb:
     globals()[x + '_weekly_returns'] = give_weekly_returns(globals()[x])
     globals()[x + '_monthly_returns'] = give_monthly_returns(globals()[x])
+    globals()[x + '_daily_returns'] = globals()[x].pct_change().dropna(how="all")
 
 dropdowns = dcc.Dropdown(
     id='selectors',
@@ -114,49 +108,13 @@ dropdown1 = dcc.Dropdown(
     value='AAPL')
 
 
-# dbc.FormGroup(
-#     [dbc.Label("Select company and year to compare returns with"),
-#      dropdown1,
-#      dcc.Dropdown(id="year", value='2020',
-#                   options=[{"label": x, "value": str(x)} for x in years]),
-#      ]
-# )
-
-# html.Div([
-#             dcc.Dropdown(
-#                 id='crossfilter-xaxis-column',
-#                 options=[{'label': i, 'value': i} for i in available_indicators],
-#                 value='Fertility rate, total (births per woman)'
-#             ),
-#             dcc.RadioItems(
-#                 id='crossfilter-xaxis-type',
-#                 options=[{'label': i, 'value': i} for i in ['Linear', 'Log']],
-#                 value='Linear',
-#                 labelStyle={'display': 'inline-block'}
-#             )
-#         ],
-#         style={'width': '49%', 'display': 'inline-block'}),
-
-
 @app.callback(
-    Output('graph3', 'figure'),
-    Input('selector', 'value'),
-    Input('selector1', 'value'),
-    Input('year', 'value'))
-def update_graph3(comp1, comp2, year):
-    pdf = pd.DataFrame()
-    pdf.columns.name = 'company'
-    pdf[comp1] = globals()[comp1 + '_weekly_returns'][year]
-    pdf[comp2] = globals()[comp2 + '_weekly_returns'][year]
-    fig = px.area(pdf, facet_col="company", facet_col_wrap=1)
-    title = "Weekly Returns of " + comp1 + " and " + comp2 + ' in ' + year
-    fig.update_layout(xaxis_rangeslider_visible=True, title_text=title)
-    fig.update_layout(template='plotly_white')
-    fig.update_traces(hovertemplate='Returns: %{y:.2f}%')
-    fig.update_layout(hovermode="x unified")
-    fig.update_layout(legend_x=0, legend_y=1)
-    fig.update_layout(height=220, margin={'l': 30, 'b': 30, 'r': 0, 't': 50})
-    return fig
+    Output("yr-options", "options"),
+    Input("selector", "value"),
+)
+def render_years(comp):
+    ind = globals()[comp].index.strftime('%Y-%m')[0][2:4]
+    return [{"label": x, "value": str(x)} for x in years[int(ind):]]
 
 
 @app.callback(
@@ -207,6 +165,27 @@ def update_graph2(yrs, comp):
     return fig
 
 
+@app.callback(
+    Output('graph3', 'figure'),
+    Input('selector', 'value'),
+    Input('selector1', 'value'),
+    Input('year', 'value'))
+def update_graph3(comp1, comp2, year):
+    pdf = pd.DataFrame()
+    pdf.columns.name = 'company'
+    pdf[comp1] = globals()[comp1 + '_weekly_returns'][year]
+    pdf[comp2] = globals()[comp2 + '_weekly_returns'][year]
+    fig = px.area(pdf, facet_col="company", facet_col_wrap=1)
+    title = "Weekly Returns of " + comp1 + " and " + comp2 + ' in ' + year
+    fig.update_layout(xaxis_rangeslider_visible=True, title_text=title)
+    fig.update_layout(template='plotly_white')
+    fig.update_traces(hovertemplate='Returns: %{y:.2f}%')
+    fig.update_layout(hovermode="x unified")
+    fig.update_layout(legend_x=0, legend_y=1)
+    fig.update_layout(height=220, margin={'l': 30, 'b': 30, 'r': 0, 't': 50})
+    return fig
+
+
 app.layout = dbc.Container(
     [html.H1('Hello Dash'),
      html.Hr(),
@@ -220,18 +199,100 @@ app.layout = dbc.Container(
          active_tab="price",
      ),
      html.Div(id="tab-content"),
-     html.Div(id="page-content")
-     ]
+     html.Div(id="page-content",
+              children=[dbc.Row(
+                  [
+                      dbc.Col(children=[
+                          dbc.Row([dbc.Col(children=[
+                              dbc.Label("Portfolio start date")], width=6),
+                              dbc.Col(children=[
+                                  dbc.Label("Investment amount at start date",
+                                            style={'float': 'right', 'display': 'inline-block', 'margin-right':'0'})
+                              ], width=6)]),
+                          dbc.Row([dbc.Col(children=[
+                              dcc.DatePickerSingle(
+                                  id='portfolio-date',
+                                  min_date_allowed=date(2000, 1, 1),
+                                  max_date_allowed=today,
+                                  initial_visible_month=date(2010, 1, 1),
+                                  date=date(2010, 1, 1),
+                                  style={'width': '49%'}
+                              )], width=6),
+                              dbc.Col(children=[
+                                  dcc.Input(
+                                      id="fund1", type="number", value=0,
+                                      debounce=False, className='input-custom',
+                                      style={'float': 'right', 'display': 'inline-block'}
+                                  )], width=6)
+                          ]),
+                          dbc.Label("Select portfolio weight(s) for each ticker",
+                                    style={'display': 'block'}),
+                          dbc.Row([dbc.Col(children=[
+                              dbc.Label("AAPL"),
+                              dcc.Input(
+                                  id="w1", type="number", value=0, debounce=False,
+                                  className='input-custom')]
+                              , width=4),
+                              dbc.Col(children=[
+                                  dbc.Label("MSFT"),
+                                  dcc.Input(
+                                      id="w2", type="number", value=0, debounce=False,
+                                      className='input-custom',
+                                  )], width=4),
+                              dbc.Col(children=[
+                                  dbc.Label("TSLA"),
+                                  dcc.Input(
+                                      id="w3", type="number", value=0, debounce=False,
+                                      className='input-custom',
+                                  )], width=4)]),
+                          dbc.Row([
+                              dbc.Col(children=[
+                                  dbc.Label("AMZN"),
+                                  dcc.Input(
+                                      id="w4", type="number", value=0, debounce=False,
+                                      className='input-custom',
+                                  )], width=4),
+                              dbc.Col(children=[
+                                  dbc.Label("FB"),
+                                  dcc.Input(
+                                      id="w5", type="number", value=0, debounce=False,
+                                      className="input-custom"
+                                  )], width=4),
+                              dbc.Col(children=[
+                                  html.Button(id='submit-button', type='button',
+                                              className='btn btn-primary',
+                                              n_clicks=0, children='Submit')
+                              ], style={'padding-top': '30px'}, width=4)
+                          ])
+                      ], width=6),
+                      dbc.Col(children=[],
+                              style={'width': '49%', 'float': 'right', 'display': 'inline-block'},
+                              width=6)
+                  ],
+                  style={
+                      'borderBottom': 'thin lightgrey solid',
+                      'backgroundColor': 'rgb(250, 250, 250)',
+                      'padding': '5px'
+                  }, align='center')]
+              )]
 )
 
 
-@app.callback(
-    Output("yr-options", "options"),
-    Input("selector", "value"),
-)
-def render_years(comp):
-    ind = globals()[comp].index.strftime('%Y-%m')[0][2:4]
-    return [{"label": x, "value": str(x)} for x in years[int(ind):]]
+def calc_custom_port(val0, weights, rets):
+    calc = val0
+    for i in range(1, len(rets)):
+        ret0 = 1
+        for j in symb:
+            ret0 += weights[j] * rets[j][i]
+        calc.append(calc[i - 1] * ret0)
+
+
+@app.callback(Output('output-state', 'children'),
+              Input('submit-button-state', 'n_clicks'),
+              State('input-1-state', 'value'),
+              State('input-2-state', 'value'))
+def update_output(n_clicks, input1, input2):
+    return
 
 
 @app.callback(
@@ -296,25 +357,13 @@ def render_tab_content(active_tab):
                 ], style={'display': 'inline-block', 'width': '49%', 'padding': '50 0'})
             ])
         ]
-        # dbc.Col(children=[dcc.Graph(id='graph1')], width=6,
-        #         style={'width': '49%', 'display': 'inline-block'}),
-        # dbc.Col(children=[dcc.Graph(id='graph2'), dcc.Graph(id='graph3')], width=6,
-        #         style={'width': '49%', 'float' : 'right', 'display': 'inline-block'}),
-        # ]),
-        # dbc.Row(
-        #     [
-        #         dbc.Col(children=[dcc.Graph(id='graph2')], width=6),
-        #         dbc.Col(children=[dcc.Graph(id='graph3')], width=6)
-        #     ],
-        #     align='center')
-
     return "No tab selected"
 
 
 @app.callback(
     Output('output-graph-range-slider', 'figure'),
     [Input('selectors', 'value')], )
-def update_output(selects):
+def update_price_history(selects):
     fig = go.Figure()
 
     for x in selects:
